@@ -1,0 +1,11 @@
+dynamodb_table = "bank-eks-tf-locks"
+github_actions_role_arn = "arn:aws:iam::202264954476:role/bank-eks-github-actions"
+github_variables = {
+  "AWS_REGION" = "us-east-1"
+  "AWS_ROLE_ARN" = "arn:aws:iam::202264954476:role/bank-eks-github-actions"
+  "TF_STATE_BUCKET" = "bank-eks-tfstate-vedanth-4476"
+  "TF_STATE_KEY" = "bank-eks/dev/terraform.tfstate"
+  "TF_STATE_LOCK_TABLE" = "bank-eks-tf-locks"
+}
+state_bucket = "bank-eks-tfstate-vedanth-4476"
+state_key = "bank-eks/dev/terraform.tfstate"

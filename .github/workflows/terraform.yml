@@ -1,0 +1,311 @@
+name: Terraform
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform.yml"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action"
+        required: true
+        default: plan
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+      plan_sha:
+        description: "Commit SHA from PR plan artifact (required for manual apply without merge)"
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: terraform-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TF_IN_AUTOMATION: true
+  TF_VAR_db_password: ${{ secrets.TF_VAR_db_password }}
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+  TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
+  TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE }}
+  PLAN_ARTIFACT_PREFIX: tfplan
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init (no backend)
+        run: terraform init -backend=false
+
+      - name: Terraform validate
+        run: terraform validate
+
+  plan:
+    name: Plan
+    needs: validate
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan')
+    runs-on: ubuntu-latest
+    environment: dev
+    outputs:
+      plan_sha: ${{ steps.meta.outputs.plan_sha }}
+      artifact_name: ${{ steps.meta.outputs.artifact_name }}
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set plan artifact identity
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            SHA="${GITHUB_SHA}"
+          fi
+          echo "plan_sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=${PLAN_ARTIFACT_PREFIX}-${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+
+      - name: Terraform init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="key=${TF_STATE_KEY}" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="dynamodb_table=${TF_STATE_LOCK_TABLE}" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform plan
+        run: |
+          terraform plan -input=false -no-color -out=tfplan \
+            -var-file=environments/phase1.tfvars 2>&1 | tee plan.txt
+
+      - name: Write plan metadata
+        run: |
+          cat > plan-metadata.json <<EOF
+          {
+            "commit_sha": "${{ steps.meta.outputs.plan_sha }}",
+            "workflow_sha": "${GITHUB_SHA}",
+            "ref": "${GITHUB_REF}",
+            "actor": "${GITHUB_ACTOR}",
+            "run_id": "${GITHUB_RUN_ID}",
+            "run_attempt": "${GITHUB_RUN_ATTEMPT}",
+            "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+      - name: Upload plan artifact (stored for apply)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.artifact_name }}
+          retention-days: 30
+          path: |
+            terraform/tfplan
+            terraform/plan.txt
+            terraform/plan-metadata.json
+
+      - name: Comment plan on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          ARTIFACT_NAME: ${{ steps.meta.outputs.artifact_name }}
+          PLAN_SHA: ${{ steps.meta.outputs.plan_sha }}
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('terraform/plan.txt', 'utf8');
+            const maxLen = 60000;
+            const body = plan.length > maxLen
+              ? plan.slice(0, maxLen) + '\n\n... truncated ...'
+              : plan;
+            const output = `#### Terraform Plan 📖
+
+            **Stored plan artifact:** \`${process.env.ARTIFACT_NAME}\`
+            After merge, apply uses this exact \`tfplan\` (not a new plan).
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`terraform
+            ${body}
+            \`\`\`
+
+            </details>
+
+            *Actor: @${context.actor} | Apply will use plan SHA: \`${process.env.PLAN_SHA}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+  apply:
+    name: Apply (stored tfplan)
+    needs: validate
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+    runs-on: ubuntu-latest
+    environment: dev
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve plan SHA to apply
+        id: sha
+        env:
+          INPUT_PLAN_SHA: ${{ github.event.inputs.plan_sha }}
+        run: |
+          if [ -n "$INPUT_PLAN_SHA" ]; then
+            PLAN_SHA="$INPUT_PLAN_SHA"
+          elif git rev-parse -q --verify HEAD^2 >/dev/null 2>&1; then
+            PLAN_SHA="$(git rev-parse HEAD^2)"
+          else
+            PLAN_SHA="${GITHUB_SHA}"
+          fi
+          echo "plan_sha=${PLAN_SHA}" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=${PLAN_ARTIFACT_PREFIX}-${PLAN_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Will apply stored plan for SHA: ${PLAN_SHA}"
+
+      - name: Checkout plan commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.sha.outputs.plan_sha }}
+
+      - name: Download stored plan artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARTIFACT_NAME: ${{ steps.sha.outputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          ARTIFACT_ID=$(gh api \
+            "/repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100&name=${ARTIFACT_NAME}" \
+            --jq '.artifacts[0].id // empty')
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo "::error::No stored plan artifact '${ARTIFACT_NAME}'."
+            echo "Open a PR first so the plan job uploads tfplan, then merge."
+            exit 1
+          fi
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" > /tmp/plan-artifact.zip
+          unzip -o /tmp/plan-artifact.zip -d /tmp/plan-artifact
+          mkdir -p terraform
+          cp /tmp/plan-artifact/terraform/tfplan terraform/tfplan
+          cp /tmp/plan-artifact/terraform/plan-metadata.json terraform/plan-metadata.json
+          cp /tmp/plan-artifact/terraform/plan.txt terraform/plan.txt
+
+      - name: Verify plan metadata
+        run: |
+          jq . plan-metadata.json
+          test -f tfplan
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+
+      - name: Terraform init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="key=${TF_STATE_KEY}" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="dynamodb_table=${TF_STATE_LOCK_TABLE}" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform apply (exact stored plan)
+        run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Upload apply receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: apply-receipt-${{ github.sha }}
+          retention-days: 90
+          path: |
+            terraform/plan-metadata.json
+            terraform/plan.txt
+
+  destroy:
+    name: Destroy
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Terraform init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="key=${TF_STATE_KEY}" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="dynamodb_table=${TF_STATE_LOCK_TABLE}" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform destroy
+        run: terraform destroy -input=false -auto-approve -var-file=environments/phase1.tfvars

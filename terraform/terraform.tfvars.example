@@ -1,0 +1,29 @@
+aws_region   = "us-east-1"
+project_name = "bank-eks"
+environment  = "dev"
+cluster_name = "bank-eks-dev"
+
+# Dev cost savings — switch for prod interview walkthrough
+single_nat_gateway               = true
+cluster_endpoint_public_access   = true
+
+node_instance_types = ["t3.medium"]
+node_desired_size   = 2
+node_min_size       = 2
+node_max_size       = 4
+
+# Leave empty for HTTP + self-signed certs. Set to your Route53 domain for HTTPS.
+domain_name = ""
+
+# Platform addons (default: Calico + Traefik + Argo CD)
+enable_calico                       = true
+enable_traefik                      = true
+enable_argocd                       = true
+enable_aws_load_balancer_controller = false
+
+# Argo CD syncs this app repo (public). Update after you create bank-eks-app on GitHub.
+app_repo_url   = "https://github.com/your-user/bank-eks-app.git"
+app_repo_branch = "main"
+
+# Change before apply — or use TF_VAR_db_password env var
+# db_password = "your-secure-password"

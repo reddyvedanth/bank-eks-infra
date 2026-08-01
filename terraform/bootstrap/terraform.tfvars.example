@@ -1,0 +1,9 @@
+aws_region        = "us-east-1"
+project_name      = "bank-eks"
+state_bucket_name = "bank-eks-tfstate-vedanth-UNIQUE" # globally unique
+github_org        = "your-github-username"
+github_repos      = ["bank-eks-infra", "bank-eks-app"]
+
+# false = GitHub OIDC already exists in AWS account (most common)
+# true  = first time setup, no OIDC provider yet
+create_github_oidc_provider = false

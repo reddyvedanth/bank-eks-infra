@@ -1,0 +1,15 @@
+aws_region   = "us-east-1"
+project_name = "bank-eks"
+environment  = "prod"
+cluster_name = "bank-eks-prod"
+
+# Production HA networking
+single_nat_gateway             = false
+cluster_endpoint_public_access = false
+
+node_instance_types = ["t3.medium"]
+node_desired_size   = 3
+node_min_size       = 3
+node_max_size       = 6
+
+domain_name = "yourdomain.com"

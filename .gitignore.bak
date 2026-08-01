@@ -1,0 +1,24 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+terraform.tfvars
+backend.hcl
+!backend.hcl.example
+!terraform.tfvars.example
+!*.tfvars.example
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Plan artifacts
+*.tfplan
+plan.txt
