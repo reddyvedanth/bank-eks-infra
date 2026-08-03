@@ -89,12 +89,6 @@ data "aws_iam_openid_connect_provider" "github" {
 
 locals {
   github_oidc_provider_arn = var.create_github_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : data.aws_iam_openid_connect_provider.github[0].arn
-
-  github_subjects = flatten([
-    for repo in var.github_repos : [
-      "repo:${var.github_org}/${repo}:*",
-    ]
-  ])
 }
 
 resource "aws_iam_role" "github_actions" {
@@ -113,7 +107,9 @@ resource "aws_iam_role" "github_actions" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          "token.actions.githubusercontent.com:sub" = local.github_subjects
+          "token.actions.githubusercontent.com:job_workflow_ref" = [
+            for repo in var.github_repos : "${var.github_org}/${repo}/.github/workflows/*"
+          ]
         }
       }
     }]

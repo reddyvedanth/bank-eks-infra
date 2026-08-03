@@ -27,3 +27,4 @@ enable_aws_load_balancer_controller = false
 
 app_repo_url    = "https://github.com/your-user/bank-eks-app.git"
 app_repo_branch = "main"
+

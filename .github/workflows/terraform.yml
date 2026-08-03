@@ -78,10 +78,13 @@ jobs:
       github.event_name == 'pull_request' ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan')
     runs-on: ubuntu-latest
-    environment: dev
+    # No environment here — PR OIDC sub is repo:...:pull_request (not environment:dev).
+    # Apply keeps environment: dev after merge.
     permissions:
       id-token: write
       contents: read
+      pull-requests: write
+      issues: write
     outputs:
       plan_sha: ${{ steps.meta.outputs.plan_sha }}
       artifact_name: ${{ steps.meta.outputs.artifact_name }}
@@ -138,6 +141,7 @@ jobs:
 
       - name: Terraform plan
         run: |
+          set -o pipefail
           terraform plan -input=false -no-color -out=tfplan \
             -var-file=environments/phase1.tfvars 2>&1 | tee plan.txt
 
