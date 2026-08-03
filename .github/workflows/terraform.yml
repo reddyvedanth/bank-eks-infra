@@ -78,7 +78,8 @@ jobs:
       github.event_name == 'pull_request' ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan')
     runs-on: ubuntu-latest
-    environment: dev
+    # No environment here — PR OIDC sub is repo:...:pull_request (not environment:dev).
+    # Apply keeps environment: dev after merge.
     permissions:
       id-token: write
       contents: read
