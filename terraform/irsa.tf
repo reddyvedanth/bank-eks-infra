@@ -105,10 +105,14 @@ resource "helm_release" "cert_manager" {
 
   create_namespace = true
 
-  set {
-    name  = "crds.enabled"
-    value = "true"
-  }
+  values = [
+    yamlencode({
+      crds = {
+        enabled = true
+      }
+      extraObjects = local.cert_manager_cluster_issuers
+    }),
+  ]
 
   dynamic "set" {
     for_each = local.enable_https ? [1] : []
@@ -119,51 +123,4 @@ resource "helm_release" "cert_manager" {
   }
 
   depends_on = [module.eks]
-}
-
-resource "kubernetes_manifest" "cluster_issuer_letsencrypt" {
-  count = local.enable_https ? 1 : 0
-
-  manifest = {
-    apiVersion = "cert-manager.io/v1"
-    kind       = "ClusterIssuer"
-    metadata = {
-      name = "letsencrypt-prod"
-    }
-    spec = {
-      acme = {
-        server = "https://acme-v02.api.letsencrypt.org/directory"
-        email  = "devops@${var.domain_name}"
-        privateKeySecretRef = {
-          name = "letsencrypt-prod"
-        }
-        solvers = [{
-          dns01 = {
-            route53 = {
-              region = var.aws_region
-            }
-          }
-        }]
-      }
-    }
-  }
-
-  depends_on = [helm_release.cert_manager]
-}
-
-resource "kubernetes_manifest" "cluster_issuer_selfsigned" {
-  count = local.enable_https ? 0 : 1
-
-  manifest = {
-    apiVersion = "cert-manager.io/v1"
-    kind       = "ClusterIssuer"
-    metadata = {
-      name = "selfsigned"
-    }
-    spec = {
-      selfSigned = {}
-    }
-  }
-
-  depends_on = [helm_release.cert_manager]
 }
