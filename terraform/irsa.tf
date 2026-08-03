@@ -121,8 +121,10 @@ resource "helm_release" "cert_manager" {
   depends_on = [module.eks]
 }
 
-resource "kubernetes_manifest" "cluster_issuer" {
-  manifest = local.enable_https ? {
+resource "kubernetes_manifest" "cluster_issuer_letsencrypt" {
+  count = local.enable_https ? 1 : 0
+
+  manifest = {
     apiVersion = "cert-manager.io/v1"
     kind       = "ClusterIssuer"
     metadata = {
@@ -144,7 +146,15 @@ resource "kubernetes_manifest" "cluster_issuer" {
         }]
       }
     }
-    } : {
+  }
+
+  depends_on = [helm_release.cert_manager]
+}
+
+resource "kubernetes_manifest" "cluster_issuer_selfsigned" {
+  count = local.enable_https ? 0 : 1
+
+  manifest = {
     apiVersion = "cert-manager.io/v1"
     kind       = "ClusterIssuer"
     metadata = {
