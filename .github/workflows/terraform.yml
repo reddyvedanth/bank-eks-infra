@@ -121,7 +121,6 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
           audience: sts.amazonaws.com
-          audience: sts.amazonaws.com
 
       - uses: hashicorp/setup-terraform@v3
         with:
