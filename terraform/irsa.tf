@@ -104,15 +104,13 @@ resource "helm_release" "cert_manager" {
   version    = "v1.16.2"
 
   create_namespace = true
+  wait             = true
+  timeout          = 600
 
-  values = [
-    yamlencode({
-      crds = {
-        enabled = true
-      }
-      extraObjects = local.cert_manager_cluster_issuers
-    }),
-  ]
+  set {
+    name  = "crds.enabled"
+    value = "true"
+  }
 
   dynamic "set" {
     for_each = local.enable_https ? [1] : []
@@ -123,4 +121,57 @@ resource "helm_release" "cert_manager" {
   }
 
   depends_on = [module.eks]
+}
+
+# ClusterIssuer CRD must exist before issuer manifests (extraObjects races CRD registration).
+resource "time_sleep" "wait_for_cert_manager_crds" {
+  create_duration = "90s"
+  depends_on      = [helm_release.cert_manager]
+}
+
+resource "kubernetes_manifest" "cluster_issuer_letsencrypt" {
+  count = local.enable_https ? 1 : 0
+
+  manifest = {
+    apiVersion = "cert-manager.io/v1"
+    kind       = "ClusterIssuer"
+    metadata = {
+      name = "letsencrypt-prod"
+    }
+    spec = {
+      acme = {
+        server = "https://acme-v02.api.letsencrypt.org/directory"
+        email  = "devops@${var.domain_name}"
+        privateKeySecretRef = {
+          name = "letsencrypt-prod"
+        }
+        solvers = [{
+          dns01 = {
+            route53 = {
+              region = var.aws_region
+            }
+          }
+        }]
+      }
+    }
+  }
+
+  depends_on = [time_sleep.wait_for_cert_manager_crds]
+}
+
+resource "kubernetes_manifest" "cluster_issuer_selfsigned" {
+  count = local.enable_https ? 0 : 1
+
+  manifest = {
+    apiVersion = "cert-manager.io/v1"
+    kind       = "ClusterIssuer"
+    metadata = {
+      name = "selfsigned"
+    }
+    spec = {
+      selfSigned = {}
+    }
+  }
+
+  depends_on = [time_sleep.wait_for_cert_manager_crds]
 }

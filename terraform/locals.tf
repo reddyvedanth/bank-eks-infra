@@ -19,42 +19,4 @@ locals {
   }
 
   enable_https = var.domain_name != ""
-
-  # cert-manager extraObjects must be YAML strings (chart tpl's each item as string).
-  cert_manager_cluster_issuers = local.enable_https ? [
-    yamlencode({
-      apiVersion = "cert-manager.io/v1"
-      kind       = "ClusterIssuer"
-      metadata = {
-        name = "letsencrypt-prod"
-      }
-      spec = {
-        acme = {
-          server = "https://acme-v02.api.letsencrypt.org/directory"
-          email  = "devops@${var.domain_name}"
-          privateKeySecretRef = {
-            name = "letsencrypt-prod"
-          }
-          solvers = [{
-            dns01 = {
-              route53 = {
-                region = var.aws_region
-              }
-            }
-          }]
-        }
-      }
-    }),
-    ] : [
-    yamlencode({
-      apiVersion = "cert-manager.io/v1"
-      kind       = "ClusterIssuer"
-      metadata = {
-        name = "selfsigned"
-      }
-      spec = {
-        selfSigned = {}
-      }
-    }),
-  ]
 }
