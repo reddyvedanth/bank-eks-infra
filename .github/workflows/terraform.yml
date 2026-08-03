@@ -83,6 +83,8 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      pull-requests: write
+      issues: write
     outputs:
       plan_sha: ${{ steps.meta.outputs.plan_sha }}
       artifact_name: ${{ steps.meta.outputs.artifact_name }}
