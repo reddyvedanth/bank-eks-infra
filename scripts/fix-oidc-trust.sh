@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# GitHub OIDC sub claim now includes numeric IDs, e.g.:
-#   repo:reddyvedanth@26704129/bank-eks-infra@1319174583:pull_request
-# Legacy format repo:reddyvedanth/bank-eks-infra:pull_request no longer matches.
+# GitHub OIDC sub now uses numeric IDs (repo:owner@123/repo@456:pull_request).
+# Use the stable "repository" JWT claim instead — AWS recommended pattern.
 set -euo pipefail
 
 ROLE_NAME="bank-eks-github-actions"
@@ -19,11 +18,9 @@ aws iam update-assume-role-policy --role-name "$ROLE_NAME" --policy-document "$(
         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
       },
       "StringLike": {
-        "token.actions.githubusercontent.com:sub": [
-          "repo:reddyvedanth/bank-eks-infra:*",
-          "repo:reddyvedanth/bank-eks-app:*",
-          "repo:reddyvedanth*/bank-eks-infra*:*",
-          "repo:reddyvedanth*/bank-eks-app*:*"
+        "token.actions.githubusercontent.com:repository": [
+          "reddyvedanth/bank-eks-infra",
+          "reddyvedanth/bank-eks-app"
         ]
       }
     }
@@ -33,4 +30,4 @@ EOF
 )"
 
 echo "Updated trust policy on $ROLE_NAME"
-aws iam get-role --role-name "$ROLE_NAME" --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition' --output json
+aws iam get-role --role-name "$ROLE_NAME" --query 'Role.AssumeRolePolicyDocument' --output json
