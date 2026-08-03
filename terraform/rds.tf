@@ -41,7 +41,7 @@ module "rds" {
   username = var.db_username
   password = var.db_password
 
-  multi_az             = var.environment == "prod"
+  multi_az               = var.environment == "prod"
   vpc_security_group_ids = [module.rds_sg.security_group_id]
 
   create_db_subnet_group = true

@@ -29,10 +29,10 @@ output "backend_hcl" {
 output "github_variables" {
   description = "Set these in GitHub → Settings → Secrets and variables → Actions"
   value = {
-    AWS_REGION           = var.aws_region
-    TF_STATE_BUCKET      = aws_s3_bucket.state.bucket
-    TF_STATE_KEY         = var.terraform_state_key
-    TF_STATE_LOCK_TABLE  = aws_dynamodb_table.locks.name
-    AWS_ROLE_ARN         = aws_iam_role.github_actions.arn
+    AWS_REGION          = var.aws_region
+    TF_STATE_BUCKET     = aws_s3_bucket.state.bucket
+    TF_STATE_KEY        = var.terraform_state_key
+    TF_STATE_LOCK_TABLE = aws_dynamodb_table.locks.name
+    AWS_ROLE_ARN        = aws_iam_role.github_actions.arn
   }
 }
