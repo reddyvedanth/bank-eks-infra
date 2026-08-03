@@ -92,10 +92,7 @@ locals {
 
   github_subjects = flatten([
     for repo in var.github_repos : [
-      "repo:${var.github_org}/${repo}:ref:refs/heads/main",
-      "repo:${var.github_org}/${repo}:pull_request",
-      "repo:${var.github_org}/${repo}:environment:dev",
-      "repo:${var.github_org}/${repo}:environment:production",
+      "repo:${var.github_org}/${repo}:*",
     ]
   ])
 }

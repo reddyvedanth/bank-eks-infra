@@ -79,6 +79,9 @@ jobs:
       (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan')
     runs-on: ubuntu-latest
     environment: dev
+    permissions:
+      id-token: write
+      contents: read
     outputs:
       plan_sha: ${{ steps.meta.outputs.plan_sha }}
       artifact_name: ${{ steps.meta.outputs.artifact_name }}
@@ -99,11 +102,26 @@ jobs:
           echo "plan_sha=${SHA}" >> "$GITHUB_OUTPUT"
           echo "artifact_name=${PLAN_ARTIFACT_PREFIX}-${SHA}" >> "$GITHUB_OUTPUT"
 
+      - name: Debug OIDC inputs
+        run: |
+          echo "GITHUB_REPOSITORY=$GITHUB_REPOSITORY"
+          echo "GITHUB_REF=$GITHUB_REF"
+          echo "GITHUB_EVENT_NAME=$GITHUB_EVENT_NAME"
+          if [ -z "$AWS_ROLE_ARN" ]; then
+            echo "::error::AWS_ROLE_ARN is empty — set repository variable or dev environment variable"
+            exit 1
+          fi
+          echo "AWS_ROLE_ARN suffix=${AWS_ROLE_ARN##*:role/}"
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+          audience: sts.amazonaws.com
+          audience: sts.amazonaws.com
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -192,6 +210,10 @@ jobs:
       (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
     runs-on: ubuntu-latest
     environment: dev
+    permissions:
+      id-token: write
+      contents: read
+      actions: read
     defaults:
       run:
         working-directory: terraform
@@ -252,6 +274,7 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+          audience: sts.amazonaws.com
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -295,6 +318,7 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+          audience: sts.amazonaws.com
 
       - uses: hashicorp/setup-terraform@v3
         with:
