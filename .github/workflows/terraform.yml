@@ -139,6 +139,7 @@ jobs:
 
       - name: Terraform plan
         run: |
+          set -o pipefail
           terraform plan -input=false -no-color -out=tfplan \
             -var-file=environments/phase1.tfvars 2>&1 | tee plan.txt
 
