@@ -20,9 +20,9 @@ locals {
 
   enable_https = var.domain_name != ""
 
-  # ClusterIssuers via Helm extraObjects (jsonencode avoids conditional object type mismatch).
-  cert_manager_letsencrypt_issuers_json = jsonencode([
-    {
+  # cert-manager extraObjects must be YAML strings (chart tpl's each item as string).
+  cert_manager_cluster_issuers = local.enable_https ? [
+    yamlencode({
       apiVersion = "cert-manager.io/v1"
       kind       = "ClusterIssuer"
       metadata = {
@@ -44,11 +44,9 @@ locals {
           }]
         }
       }
-    },
-  ])
-
-  cert_manager_selfsigned_issuers_json = jsonencode([
-    {
+    }),
+    ] : [
+    yamlencode({
       apiVersion = "cert-manager.io/v1"
       kind       = "ClusterIssuer"
       metadata = {
@@ -57,10 +55,6 @@ locals {
       spec = {
         selfSigned = {}
       }
-    },
-  ])
-
-  cert_manager_cluster_issuers = jsondecode(
-    local.enable_https ? local.cert_manager_letsencrypt_issuers_json : local.cert_manager_selfsigned_issuers_json
-  )
+    }),
+  ]
 }
