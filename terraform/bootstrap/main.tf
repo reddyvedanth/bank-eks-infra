@@ -90,9 +90,11 @@ data "aws_iam_openid_connect_provider" "github" {
 locals {
   github_oidc_provider_arn = var.create_github_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : data.aws_iam_openid_connect_provider.github[0].arn
 
+  # GitHub OIDC sub may use owner/repo IDs: repo:org@123/repo@456:pull_request
   github_subjects = flatten([
     for repo in var.github_repos : [
       "repo:${var.github_org}/${repo}:*",
+      "repo:${var.github_org}*/${repo}*:*",
     ]
   ])
 }

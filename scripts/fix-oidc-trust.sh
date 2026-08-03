@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Run once locally if Plan/Apply OIDC fails with AssumeRoleWithWebIdentity.
-# Widens trust on bank-eks-github-actions to accept any sub from your two repos.
+# GitHub OIDC sub claim now includes numeric IDs, e.g.:
+#   repo:reddyvedanth@26704129/bank-eks-infra@1319174583:pull_request
+# Legacy format repo:reddyvedanth/bank-eks-infra:pull_request no longer matches.
 set -euo pipefail
 
 ROLE_NAME="bank-eks-github-actions"
@@ -20,7 +21,9 @@ aws iam update-assume-role-policy --role-name "$ROLE_NAME" --policy-document "$(
       "StringLike": {
         "token.actions.githubusercontent.com:sub": [
           "repo:reddyvedanth/bank-eks-infra:*",
-          "repo:reddyvedanth/bank-eks-app:*"
+          "repo:reddyvedanth/bank-eks-app:*",
+          "repo:reddyvedanth*/bank-eks-infra*:*",
+          "repo:reddyvedanth*/bank-eks-app*:*"
         ]
       }
     }
