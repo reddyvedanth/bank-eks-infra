@@ -107,10 +107,13 @@ resource "helm_release" "cert_manager" {
   wait             = true
   timeout          = 600
 
-  set {
-    name  = "crds.enabled"
-    value = "true"
-  }
+  values = [
+    yamlencode({
+      crds = {
+        enabled = true
+      }
+    }),
+  ]
 
   dynamic "set" {
     for_each = local.enable_https ? [1] : []
@@ -123,55 +126,23 @@ resource "helm_release" "cert_manager" {
   depends_on = [module.eks]
 }
 
-# ClusterIssuer CRD must exist before issuer manifests (extraObjects races CRD registration).
-resource "time_sleep" "wait_for_cert_manager_crds" {
-  create_duration = "90s"
-  depends_on      = [helm_release.cert_manager]
-}
+# kubernetes_manifest validates GVK against a discovery cache that can be stale in the
+# same apply as cert-manager; Helm applies issuers after cert-manager wait completes.
+resource "helm_release" "cluster_issuer" {
+  name       = "cluster-issuer"
+  repository = "https://bedag.github.io/helm-charts"
+  chart      = "raw"
+  version    = "2.0.2"
+  namespace  = "cert-manager"
 
-resource "kubernetes_manifest" "cluster_issuer_letsencrypt" {
-  count = local.enable_https ? 1 : 0
+  wait    = true
+  timeout = 300
 
-  manifest = {
-    apiVersion = "cert-manager.io/v1"
-    kind       = "ClusterIssuer"
-    metadata = {
-      name = "letsencrypt-prod"
-    }
-    spec = {
-      acme = {
-        server = "https://acme-v02.api.letsencrypt.org/directory"
-        email  = "devops@${var.domain_name}"
-        privateKeySecretRef = {
-          name = "letsencrypt-prod"
-        }
-        solvers = [{
-          dns01 = {
-            route53 = {
-              region = var.aws_region
-            }
-          }
-        }]
-      }
-    }
-  }
+  values = [
+    yamlencode({
+      resources = local.cluster_issuer_resources
+    }),
+  ]
 
-  depends_on = [time_sleep.wait_for_cert_manager_crds]
-}
-
-resource "kubernetes_manifest" "cluster_issuer_selfsigned" {
-  count = local.enable_https ? 0 : 1
-
-  manifest = {
-    apiVersion = "cert-manager.io/v1"
-    kind       = "ClusterIssuer"
-    metadata = {
-      name = "selfsigned"
-    }
-    spec = {
-      selfSigned = {}
-    }
-  }
-
-  depends_on = [time_sleep.wait_for_cert_manager_crds]
+  depends_on = [helm_release.cert_manager]
 }
