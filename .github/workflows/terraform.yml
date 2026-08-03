@@ -247,6 +247,7 @@ jobs:
           ref: ${{ steps.sha.outputs.plan_sha }}
 
       - name: Download stored plan artifact
+        working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ARTIFACT_NAME: ${{ steps.sha.outputs.artifact_name }}
@@ -263,9 +264,14 @@ jobs:
           gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" > /tmp/plan-artifact.zip
           unzip -o /tmp/plan-artifact.zip -d /tmp/plan-artifact
           mkdir -p terraform
-          cp /tmp/plan-artifact/terraform/tfplan terraform/tfplan
-          cp /tmp/plan-artifact/terraform/plan-metadata.json terraform/plan-metadata.json
-          cp /tmp/plan-artifact/terraform/plan.txt terraform/plan.txt
+          if [ -f /tmp/plan-artifact/terraform/tfplan ]; then
+            SRC=/tmp/plan-artifact/terraform
+          else
+            SRC=/tmp/plan-artifact
+          fi
+          cp "$SRC/tfplan" terraform/tfplan
+          cp "$SRC/plan-metadata.json" terraform/plan-metadata.json
+          cp "$SRC/plan.txt" terraform/plan.txt
 
       - name: Verify plan metadata
         run: |
