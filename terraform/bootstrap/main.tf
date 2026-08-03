@@ -107,9 +107,8 @@ resource "aws_iam_role" "github_actions" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          # Use repository claim — stable; sub claim includes owner/repo numeric IDs.
-          "token.actions.githubusercontent.com:repository" = [
-            for repo in var.github_repos : "${var.github_org}/${repo}"
+          "token.actions.githubusercontent.com:job_workflow_ref" = [
+            for repo in var.github_repos : "${var.github_org}/${repo}/.github/workflows/*"
           ]
         }
       }
